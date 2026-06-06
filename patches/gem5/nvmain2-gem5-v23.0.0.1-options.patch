@@ -1,0 +1,120 @@
+diff --git a/configs/common/Options.py b/configs/common/Options.py
+index 094eaf1..2b6e4b6 100644
+--- a/configs/common/Options.py
++++ b/configs/common/Options.py
+@@ -136,6 +136,47 @@ def addNoISAOptions(parser):
+         help="Memory channels interleave",
+     )
+ 
++    # NVMain options. These are used when gem5 is built with
++    # EXTRAS=/path/to/NVMain and run with --mem-type=NVMainMemory.
++    parser.add_argument(
++        "--nvmain-config",
++        action="store",
++        type=str,
++        default="",
++        help="NVMain configuration file path",
++    )
++    parser.add_argument(
++        "--nvmain-param",
++        action="append",
++        default=[],
++        metavar="KEY=VALUE",
++        help="Override an NVMain configuration key. May be used multiple times.",
++    )
++    parser.add_argument(
++        "--nvmain-atomic",
++        action="store_true",
++        help="Use NVMain atomic mode",
++    )
++    parser.add_argument(
++        "--nvmain-atomic-latency",
++        action="store",
++        type=str,
++        default=None,
++        help="NVMain atomic mode latency, e.g. 30ns",
++    )
++    parser.add_argument(
++        "--nvmain-atomic-variance",
++        action="store",
++        type=str,
++        default=None,
++        help="NVMain atomic mode latency variance, e.g. 30ns",
++    )
++    parser.add_argument(
++        "--nvmain-warmup",
++        action="store_true",
++        help="Warm up NVMain internal cache during atomic accesses",
++    )
++
+     parser.add_argument("--memchecker", action="store_true")
+ 
+     # Cache Options
+diff --git a/configs/common/MemConfig.py b/configs/common/MemConfig.py
+index 1f09bf7..ff4a4d4 100644
+--- a/configs/common/MemConfig.py
++++ b/configs/common/MemConfig.py
+@@ -95,6 +95,12 @@ def config_mem(options, system):
+     opt_mem_channels_intlv = getattr(options, "mem_channels_intlv", 128)
+     opt_xor_low_bit = getattr(options, "xor_low_bit", 0)
+ 
++    opt_nvmain_config = getattr(options, "nvmain_config", "")
++    opt_nvmain_param = getattr(options, "nvmain_param", []) or []
++    opt_nvmain_atomic = getattr(options, "nvmain_atomic", False)
++    opt_nvmain_atomic_latency = getattr(options, "nvmain_atomic_latency", None)
++    opt_nvmain_atomic_variance = getattr(options, "nvmain_atomic_variance", None)
++    opt_nvmain_warmup = getattr(options, "nvmain_warmup", False)
+     if opt_mem_type == "HMC_2500_1x32":
+         HMChost = HMC.config_hmc_host_ctrl(options, system)
+         HMC.config_hmc_dev(options, system, HMChost.hmc_host)
+@@ -130,6 +136,37 @@ def config_mem(options, system):
+ 
+     import math
+     from m5.util import fatal
++
++    def apply_nvmain_options(mem):
++        if mem.__class__.__name__ != "NVMainMemory":
++            return
++
++        if not opt_nvmain_config:
++            fatal(
++                "--mem-type=NVMainMemory requires "
++                "--nvmain-config=/path/to/nvmain.config"
++            )
++
++        mem.config = opt_nvmain_config
++        mem.atomic_mode = opt_nvmain_atomic
++        mem.NVMainWarmUp = opt_nvmain_warmup
++
++        if opt_nvmain_atomic_latency is not None:
++            mem.atomic_latency = opt_nvmain_atomic_latency
++
++        if opt_nvmain_atomic_variance is not None:
++            mem.atomic_variance = opt_nvmain_atomic_variance
++
++        config_params = []
++        config_values = []
++        for override in opt_nvmain_param:
++            if "=" not in override:
++                fatal(
++                    "--nvmain-param must be in KEY=VALUE form, got '%s'",
++                    override,
++                )
++            key, value = override.split("=", 1)
++            config_params.append(key)
++            config_values.append(value)
++
++        mem.configparams = ",".join(config_params)
++        mem.configvalues = ",".join(config_values)
+ 
+     intlv_bits = int(math.log(nbr_mem_ctrls, 2))
+     if 2**intlv_bits != nbr_mem_ctrls:
+@@ -196,6 +232,8 @@ def config_mem(options, system):
+                         "latency to 1ns."
+                     )
+ 
++                apply_nvmain_options(dram_intf)
++
+                 # Create the controller that will drive the interface
+                 mem_ctrl = dram_intf.controller()
+ 

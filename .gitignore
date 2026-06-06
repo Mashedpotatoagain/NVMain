@@ -1,0 +1,20 @@
+# Build outputs
+*.o
+*.a
+*.so
+build/
+obj/
+__pycache__/
+*.pyc
+
+# gem5 build artifacts
+*.opt
+*.fast
+*.debug
+*.pe
+
+# Editor/OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
